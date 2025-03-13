@@ -1,5 +1,9 @@
 # AI-Image-Detector
 
+## Project Proposal
+
+[This]() is our initial project proposal. Updates to be added.
+
 ## Data Source
 
 The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasala79/ai-vs-human-generated-dataset?select=test_data_v2) dataset is published on Kaggle.
