@@ -2,7 +2,7 @@
 
 ## Project Proposal
 
-[This]() is our initial project proposal. Updates to be added.
+[This](https://github.com/jh000107/AI-Image-Detector/blob/master/documents/Enhancing_AI_Generated_Image_Detection__A_Comparative_Study_of_CNNs__Transformers__and_Contrastive_Learning.pdf) is our initial project proposal. Updates to be added.
 
 ## Data Source
 
