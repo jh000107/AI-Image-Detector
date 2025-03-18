@@ -10,3 +10,8 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 
 "The dataset consists of authentic images sampled from the Shutterstock platform across various categories, including a balanced selection where one-third of the images feature humans. These authentic images are paired with their equivalents generated using state-of-the-art generative models. This structured pairing enables a direct comparison between real and AI-generated content, providing a robust foundation for developing and evaluating image authenticity detection systems."
 
+## Data Analysis
+
+Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda.ipynb)
+
+## Data Processing
