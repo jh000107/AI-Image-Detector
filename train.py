@@ -1,20 +1,13 @@
-import cv2
 import os
 import pandas as pd
-import numpy as np
+from PIL import Image
 
 import torch
 import torchvision
 import torchvision.transforms as transforms
 
-from PIL import Image
-
-############ My imports ############
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights
-from torchvision.models import efficientnet_b0, efficientnet_b3
-from torchvision.models import EfficientNet_B0_Weights, EfficientNet_B3_Weights
-
 from sklearn.model_selection import train_test_split
 
 ####################################
@@ -162,7 +155,6 @@ def main():
         "seed": 42,
     }
 
-    import pprint
     print("\nCONFIG Dictionary:")
     pprint.pprint(CONFIG)
 
