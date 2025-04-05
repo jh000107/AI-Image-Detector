@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_score, recall_score, f1_score
 
 ####################################
 
@@ -43,7 +44,7 @@ class CustomDataset(Dataset):
             label = self.df.iloc[idx]['label']
             return image, label
         else:
-            return image
+            return image, -1
 
 ################################################################################
 # Define a one epoch training function
@@ -175,7 +176,7 @@ def main():
     ]) 
 
     # Validation and test transforms (NO augmentation)
-    transform_val = transforms.Compose([
+    transform_test = transforms.Compose([
         transforms.Resize((224, 224)),            
         transforms.ToTensor(),                        
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])   
@@ -208,9 +209,11 @@ def main():
     trainset = CustomDataset(train_df, is_train=True, transform=transform_train)
     trainloader = DataLoader(trainset, batch_size=CONFIG["batch_size"], shuffle=True, num_workers=CONFIG["num_workers"])
 
-    valset = CustomDataset(val_df, is_train=True, transform=transform_val)
+    valset = CustomDataset(val_df, is_train=True, transform=transform_test)
     valloader = DataLoader(valset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
     
+    testset = CustomDataset(test_df, is_train=False, transform=transform_test)
+    testloader = DataLoader(testset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
     ############################################################################
     #   Instantiate model and move to target device
     ############################################################################
@@ -270,6 +273,55 @@ def main():
             wandb.save(best_model_filename) # Save to wandb as well
 
     wandb.finish()
+
+    ############################################################################
+    # Evaluation -- shouldn't have to change the following code
+    ############################################################################
+
+    model.load_state_dict(torch.load(best_model_filename))
+    model.eval()
+    
+    all_preds = []
+    all_labels = []
+    correct = 0
+    total = 0
+
+    with torch.no_grad():
+        for images, labels in valloader:  # Use val_loader or test_loader
+            images, labels = images.to(CONFIG["device"]), labels.to(CONFIG["device"])
+            outputs = model(images)
+            _, preds = torch.max(outputs, 1)
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+            total += labels.size(0)
+            correct += predicted.eq(labels.to(CONFIG["device"])).sum().item()
+
+    # Compute metrics
+    accuracy = 100. * correct / total
+    precision = precision_score(all_labels, all_preds, average='binary')
+    recall = recall_score(all_labels, all_preds, average='binary')
+    f1 = f1_score(all_labels, all_preds, average='binary')
+
+    print(f'Accuracy: {accuracy:.4f}')
+    print(f'Precision: {precision:.4f}')
+    print(f'Recall: {recall:.4f}')
+    print(f'F1 Score: {f1:.4f}')
+    
+    predictions = []
+
+    with torch.no_grad():
+        for images, _ in testloader:
+            images = images.to(CONFIG["device"])
+            outputs = model(images)
+            _, predicted = torch.max(outputs, 1)
+            predictions.extend(predicted.cpu().numpy())
+
+    # --- Create Submission File ---
+    submission_df = pd.DataFrame({'id': test_df.iloc[:, 0], 'label': predictions})
+    submission_df.to_csv("submission.csv", index=False)
+    print("submission.csv created successfully.")
+
+
 
 if __name__ == '__main__':
     main()
