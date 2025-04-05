@@ -1,0 +1,7 @@
+pandas
+Pillow
+torch
+torchvision
+scikit-learn
+tqdm
+wandb
