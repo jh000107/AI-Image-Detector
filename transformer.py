@@ -4,9 +4,9 @@ from PIL import Image
 import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
-from torchvision.models import vit_b_32, ViT_B_32_Weights
+import timm  # Using timm for model instantiation
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 from tqdm.auto import tqdm  # For progress bars
 import wandb
 import pprint
@@ -98,14 +98,14 @@ def validate(model, valloader, criterion, device):
     val_acc = 100. * correct / total
     # Compute F1 Score
     val_f1 = f1_score(all_labels, all_preds, average='binary')
-    return val_loss, val_acc, val_f1
+    return val_loss, val_acc, val_f1, all_preds, all_labels
 
 ################################################################################
 # Main function for setting up the Vision Transformer experiment with wandb
 ################################################################################
 def main(test_only=False):
     CONFIG = {
-        "model": "ViT-B/32",  # Vision Transformer model
+        "model": "ViT-B/32",  # Using a base Vision Transformer model
         "batch_size": 16,      
         "learning_rate": 3e-4,
         "epochs": 8,
@@ -119,14 +119,18 @@ def main(test_only=False):
     pprint.pprint(CONFIG)
 
     ############################################################################
-    # Data Transformations
+    # Data Transformations with more aggressive augmentations
     ############################################################################
-    # ViT models typically use 224x224 images; adjust normalization according to the pretrained weights.
     transform_train = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(15),  # up to 15 degrees rotation
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+        transforms.RandomGrayscale(p=0.1),
+        transforms.RandomPerspective(distortion_scale=0.5, p=0.5),
         transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
+        transforms.RandomErasing(p=0.7, scale=(0.02, 0.33))  # aggressive random erasing
     ])
 
     transform_val = transforms.Compose([
@@ -161,12 +165,22 @@ def main(test_only=False):
     valloader = DataLoader(valset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
 
     ############################################################################
-    # Instantiate the Vision Transformer model
+    # Instantiate the Vision Transformer model without stochastic depth
     ############################################################################
-    weights = ViT_B_32_Weights.IMAGENET1K_V1
-    model = vit_b_32(weights=weights)
-    # Modify the classification head to output two classes (real vs. fake)
-    model.heads.head = torch.nn.Linear(model.heads.head.in_features, 2)
+    model = timm.create_model('vit_base_patch32_224', pretrained=True)
+    # Replace the classifier head with an enhanced classifier
+    in_features = model.head.in_features
+    model.head = torch.nn.Sequential(
+        torch.nn.Linear(in_features, 512),
+        torch.nn.BatchNorm1d(512),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0.3),
+        torch.nn.Linear(512, 256),
+        torch.nn.BatchNorm1d(256),
+        torch.nn.ReLU(),
+        torch.nn.Dropout(0.3),
+        torch.nn.Linear(256, 2)
+    )
     model = model.to(CONFIG["device"])
 
     print("\nModel summary:")
@@ -180,7 +194,6 @@ def main(test_only=False):
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
 
     if not test_only:
-        
         print("Training starts now.")
         ############################################################################
         # Initialize wandb for experiment tracking
@@ -196,7 +209,7 @@ def main(test_only=False):
         best_val_f1 = 0.0
         for epoch in range(CONFIG["epochs"]):
             train_loss, train_acc = train(epoch, model, trainloader, optimizer, criterion, CONFIG)
-            val_loss, val_acc, val_f1 = validate(model, valloader, criterion, CONFIG["device"])
+            val_loss, val_acc, val_f1, all_preds, all_labels = validate(model, valloader, criterion, CONFIG["device"])
             scheduler.step()
 
             wandb.log({
@@ -232,9 +245,16 @@ def main(test_only=False):
                 all_preds.extend(preds.cpu().numpy())
                 all_labels.extend(labels.cpu().numpy())
         final_f1 = f1_score(all_labels, all_preds, average='binary')
-        print(f'Final Validation F1 Score: {final_f1:.4f}')
+        accuracy = accuracy_score(all_labels, all_preds)
+        precision = precision_score(all_labels, all_preds, average='binary')
+        recall = recall_score(all_labels, all_preds, average='binary')
+        
+        print(f'Accuracy: {accuracy:.4f}')
+        print(f'Precision: {precision:.4f}')
+        print(f'Recall: {recall:.4f}')
+        print(f'F1 Score: {final_f1:.4f}')
+        
         wandb.init(project=CONFIG["wandb_project"], config=CONFIG)  # Reinitialize to log final metric if desired
-        wandb.log({"final_val_f1": final_f1})
         wandb.finish()
     else:
         # If test_only, load the best model directly.
@@ -244,10 +264,7 @@ def main(test_only=False):
     ############################################################################
     # Test Prediction and Submission Creation for Kaggle
     ############################################################################
-
     print("Testing starts now.")
-
-    # Create test dataset and dataloader
     testset = CustomDataset(test_df, is_train=False, transform=transform_val)
     testloader = DataLoader(testset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
     
@@ -259,13 +276,11 @@ def main(test_only=False):
             _, preds = torch.max(outputs, 1)
             predictions.extend(preds.cpu().numpy())
 
-    # Create a submission DataFrame.
-    # Assuming the first column of test_df contains the test IDs.
     submission_df = pd.DataFrame({
-    'id': test_df['file_name'].apply(lambda x: x.replace('../dataset/', '')),
-    'label': predictions
+        'id': test_df['file_name'].apply(lambda x: x.replace('../dataset/', '')),
+        'label': predictions
     })
-    submission_dir = "../results/ViT-B32"
+    submission_dir = "../results/ViT-B32/advanced"
     os.makedirs(submission_dir, exist_ok=True)
     submission_df.to_csv(os.path.join(submission_dir, "submission.csv"), index=False)
 
