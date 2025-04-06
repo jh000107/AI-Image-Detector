@@ -8,7 +8,7 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 
 from torch.utils.data import DataLoader, Dataset
-from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights, efficientnet_b3, EfficientNet_B2_Weights
+from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights, efficientnet_b3, EfficientNet_B3_Weights
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
 
@@ -49,25 +49,48 @@ class CustomDataset(Dataset):
 ################################################################################
 
 class CNNBasedClassifier(nn.Module):
-    def __init__(self, model, num_classes=2, freeze_backbone=True):
+    def __init__(self, model_name, num_classes=2, freeze_backbone=True):
         super(CNNBasedClassifier, self).__init__()
+
+        if model_name == "ResNet50":
+            model = resnet50(weights=ResNet50_Weights.DEFAULT)
+        elif model_name == "ResNeXt50":
+            model = resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.DEFAULT)
+        elif model_name == "EfficientNetB3":
+            model = efficientnet_b3(weights=EfficientNet_B3_Weights.DEFAULT)
+
+        
         self.model = model
 
         if freeze_backbone:
             for param in self.model.parameters():
                 param.requires_grad = False
-        
-        self.model.fc = nn.Sequential(
-            nn.Linear(self.model.fc.in_features, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_classes)
-        )
+
+        # Classifier head
+        if model_name == "EfficientNetB3":
+            self.model.classifier = nn.Sequential(
+                nn.Linear(self.model.classifier.in_features, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(512, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, num_classes)
+            )
+        else:
+            self.model.fc = nn.Sequential(
+                nn.Linear(self.model.fc.in_features, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(512, 256),
+                nn.BatchNorm1d(256),
+                nn.ReLU(),
+                nn.Dropout(0.3),
+                nn.Linear(256, num_classes)
+            )
 
     def forward(self, x):
         return self.model(x)
@@ -162,8 +185,9 @@ def main():
 
 
     CONFIG = {
-        "model": "ResNeXt-50",   # Change name when using a different model
-        "batch_size": 8, # run batch size finder to find optimal batch size
+        "model": "EfficientNetB3",   # Change name when using a different model
+        "batch_size": 16, # run batch size finder to find optimal batch size
+        "image_size": 300, # Resize images to this size
         "learning_rate": 3e-4,
         "epochs": 10,  
         "num_workers": 4, # Adjust based on your system
@@ -183,19 +207,20 @@ def main():
 
     # Data augmentation and normalization for training
     transform_train = transforms.Compose([
-        transforms.Resize((224, 224)),                
-        # transforms.RandomResizedCrop(224),  
-        transforms.RandomHorizontalFlip(),      
-        # transforms.RandomRotation(10),           
+        transforms.Resize((CONFIG['image_size'], CONFIG['image_size'])),                
+        transforms.RandomResizedCrop(CONFIG['image_size']),  
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),     
+        transforms.RandomRotation(20),           
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.RandAugment(num_ops=2, magnitude=9),
-        transforms.ToTensor(),        
+        transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  
     ]) 
 
     # Validation and test transforms (NO augmentation)
     transform_test = transforms.Compose([
-        transforms.Resize((224, 224)),            
+        transforms.Resize((CONFIG['image_size'], CONFIG['image_size'])),            
         transforms.ToTensor(),                        
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])   
     ])
@@ -237,7 +262,7 @@ def main():
     ############################################################################
 
     # Instantiate the model.
-    model = CNNBasedClassifier(model=resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.DEFAULT), num_classes=2, freeze_backbone=True) # instantiate your model ### TODO
+    model = CNNBasedClassifier(model_name=CONFIG['model'], num_classes=2, freeze_backbone=True) # instantiate your model ### TODO
 
     model = model.to(CONFIG["device"])   # move it to target device
 
