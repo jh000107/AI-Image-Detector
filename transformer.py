@@ -4,7 +4,7 @@ from PIL import Image
 import torch
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
-from torchvision.models import vit_b_16, ViT_B_16_Weights
+from torchvision.models import vit_b_32, ViT_B_32_Weights
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 from tqdm.auto import tqdm  # For progress bars
@@ -272,4 +272,4 @@ def main(test_only=False):
     print("submission.csv created successfully.")
 
 if __name__ == '__main__':
-    main(test_only=True)
+    main(test_only=False)
