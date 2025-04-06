@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
 from tqdm.auto import tqdm  # For progress bars
 import wandb
 import pprint
@@ -13,7 +14,7 @@ import pprint
 best_model_filename = "best_transformer_model.pth"
 
 ################################################################################
-# Define a custom dataset class (same as the CNN version)
+# Define a custom dataset class 
 ################################################################################
 class CustomDataset(Dataset):
     def __init__(self, df, is_train=True, transform=None):
@@ -74,6 +75,8 @@ def validate(model, valloader, criterion, device):
     correct = 0
     total = 0
 
+    all_preds = []
+    all_labels = []
     with torch.no_grad():
         progress_bar = tqdm(valloader, desc="[Validate]", leave=False)
         for i, (inputs, labels) in enumerate(progress_bar):
@@ -86,21 +89,26 @@ def validate(model, valloader, criterion, device):
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
 
+            all_preds.extend(predicted.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+
             progress_bar.set_postfix({"loss": running_loss / (i + 1), "acc": 100. * correct / total})
 
     val_loss = running_loss / len(valloader)
     val_acc = 100. * correct / total
-    return val_loss, val_acc
+    # Compute F1 Score
+    val_f1 = f1_score(all_labels, all_preds, average='binary')
+    return val_loss, val_acc, val_f1
 
 ################################################################################
 # Main function for setting up the Vision Transformer experiment with wandb
 ################################################################################
-def main():
+def main(test_only=False):
     CONFIG = {
-        "model": "ViT-B/16",  # Vision Transformer model
-        "batch_size": 8,  # Adjust based on available memory
+        "model": "ViT-B/32",  # Vision Transformer model
+        "batch_size": 16,      
         "learning_rate": 3e-4,
-        "epochs": 10,
+        "epochs": 8,
         "num_workers": 4,
         "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
         "wandb_project": "ai-human-image-classification-transformer",
@@ -155,8 +163,8 @@ def main():
     ############################################################################
     # Instantiate the Vision Transformer model
     ############################################################################
-    weights = ViT_B_16_Weights.IMAGENET1K_V1
-    model = vit_b_16(weights=weights)
+    weights = ViT_B_32_Weights.IMAGENET1K_V1
+    model = vit_b_32(weights=weights)
     # Modify the classification head to output two classes (real vs. fake)
     model.heads.head = torch.nn.Linear(model.heads.head.in_features, 2)
     model = model.to(CONFIG["device"])
@@ -171,37 +179,97 @@ def main():
     optimizer = torch.optim.AdamW(model.parameters(), lr=CONFIG["learning_rate"], weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
 
-    ############################################################################
-    # Initialize wandb for experiment tracking
-    ############################################################################
-    wandb.login()
-    wandb.init(project=CONFIG["wandb_project"], config=CONFIG)
-    wandb.watch(model)
+    if not test_only:
+        
+        print("Training starts now.")
+        ############################################################################
+        # Initialize wandb for experiment tracking
+        ############################################################################
+        wandb.login()
+        wandb.init(project=CONFIG["wandb_project"], config=CONFIG)
+        wandb.watch(model)
+
+        ############################################################################
+        # Training Loop
+        ############################################################################
+        best_val_acc = 0.0
+        best_val_f1 = 0.0
+        for epoch in range(CONFIG["epochs"]):
+            train_loss, train_acc = train(epoch, model, trainloader, optimizer, criterion, CONFIG)
+            val_loss, val_acc, val_f1 = validate(model, valloader, criterion, CONFIG["device"])
+            scheduler.step()
+
+            wandb.log({
+                "epoch": epoch + 1,
+                "train_loss": train_loss,
+                "train_acc": train_acc,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+                "val_f1": val_f1,
+                "lr": optimizer.param_groups[0]["lr"]
+            })
+
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                best_val_f1 = val_f1
+                torch.save(model.state_dict(), best_model_filename)
+                wandb.save(best_model_filename)
+
+        wandb.finish()
+
+        ############################################################################
+        # Evaluation on Validation Set (for logging final metrics)
+        ############################################################################
+        model.load_state_dict(torch.load(best_model_filename))
+        model.eval()
+        all_preds = []
+        all_labels = []
+        with torch.no_grad():
+            for inputs, labels in tqdm(valloader, desc="Evaluating Validation Set"):
+                inputs, labels = inputs.to(CONFIG["device"]), labels.to(CONFIG["device"])
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                all_preds.extend(preds.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
+        final_f1 = f1_score(all_labels, all_preds, average='binary')
+        print(f'Final Validation F1 Score: {final_f1:.4f}')
+        wandb.init(project=CONFIG["wandb_project"], config=CONFIG)  # Reinitialize to log final metric if desired
+        wandb.log({"final_val_f1": final_f1})
+        wandb.finish()
+    else:
+        # If test_only, load the best model directly.
+        model.load_state_dict(torch.load(best_model_filename))
+        model.eval()
 
     ############################################################################
-    # Training Loop
+    # Test Prediction and Submission Creation for Kaggle
     ############################################################################
-    best_val_acc = 0.0
-    for epoch in range(CONFIG["epochs"]):
-        train_loss, train_acc = train(epoch, model, trainloader, optimizer, criterion, CONFIG)
-        val_loss, val_acc = validate(model, valloader, criterion, CONFIG["device"])
-        scheduler.step()
 
-        wandb.log({
-            "epoch": epoch + 1,
-            "train_loss": train_loss,
-            "train_acc": train_acc,
-            "val_loss": val_loss,
-            "val_acc": val_acc,
-            "lr": optimizer.param_groups[0]["lr"]
-        })
+    print("Testing starts now.")
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(model.state_dict(), best_model_filename)
-            wandb.save(best_model_filename)
+    # Create test dataset and dataloader
+    testset = CustomDataset(test_df, is_train=False, transform=transform_val)
+    testloader = DataLoader(testset, batch_size=CONFIG["batch_size"], shuffle=False, num_workers=CONFIG["num_workers"])
+    
+    predictions = []
+    with torch.no_grad():
+        for images in tqdm(testloader, desc="Predicting Test Set"):
+            images = images.to(CONFIG["device"])
+            outputs = model(images)
+            _, preds = torch.max(outputs, 1)
+            predictions.extend(preds.cpu().numpy())
 
-    wandb.finish()
+    # Create a submission DataFrame.
+    # Assuming the first column of test_df contains the test IDs.
+    submission_df = pd.DataFrame({
+    'id': test_df['file_name'].apply(lambda x: x.replace('../dataset/', '')),
+    'label': predictions
+    })
+    submission_dir = "../results/ViT-B32"
+    os.makedirs(submission_dir, exist_ok=True)
+    submission_df.to_csv(os.path.join(submission_dir, "submission.csv"), index=False)
+
+    print("submission.csv created successfully.")
 
 if __name__ == '__main__':
-    main()
+    main(test_only=True)
