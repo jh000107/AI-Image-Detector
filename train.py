@@ -5,9 +5,10 @@ from PIL import Image
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import torch.nn as nn
 
 from torch.utils.data import DataLoader, Dataset
-from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights
+from torchvision.models import resnet50, ResNet50_Weights, resnext50_32x4d, ResNeXt50_32X4D_Weights, efficientnet_b3, EfficientNet_B2_Weights
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
 
@@ -17,9 +18,6 @@ from tqdm.auto import tqdm  # For progress bars
 import wandb
 import json
 import pprint
-
-
-best_model_filename = "best_model.pth"
 
 ################################################################################
 # Define a custom dataset class
@@ -45,6 +43,36 @@ class CustomDataset(Dataset):
             return image, label
         else:
             return image, -1
+
+################################################################################
+# Define a custom model
+################################################################################
+
+class CNNBasedClassifier(nn.Module):
+    def __init__(self, model, num_classes=2, freeze_backbone=True):
+        super(CNNBasedClassifier, self).__init__()
+        self.model = model
+
+        if freeze_backbone:
+            for param in self.model.parameters():
+                param.requires_grad = False
+        
+        self.model.fc = nn.Sequential(
+            nn.Linear(self.model.fc.in_features, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes)
+        )
+
+    def forward(self, x):
+        return self.model(x)
+    
+
 
 ################################################################################
 # Define a one epoch training function
@@ -123,18 +151,6 @@ def validate(model, valloader, criterion, device):
     val_acc = 100. * correct / total
     return val_loss, val_acc
 
-# Helper functions to free/unfreeze model parameters suggested by ChatGPT. It is not used in the final submission as it did not improve the performance.
-# However, it is a good practice to freeze the backbone of the model and only train the head for a few epochs before unfreezing the entire model.
-def freeze_backbone(model):
-    for name, param in model.named_parameters():
-        if "fc" not in name:
-            param.requires_grad = False
-
-def unfreeze_all(model):
-    for param in model.parameters():
-        param.requires_grad = True
-
-
 
 def main():
     ############################################################################
@@ -146,7 +162,7 @@ def main():
 
 
     CONFIG = {
-        "model": "ResNet-50",   # Change name when using a different model
+        "model": "ResNeXt-50",   # Change name when using a different model
         "batch_size": 8, # run batch size finder to find optimal batch size
         "learning_rate": 3e-4,
         "epochs": 10,  
@@ -155,6 +171,8 @@ def main():
         "wandb_project": "ai-human-image-classification",
         "seed": 42,
     }
+
+    best_model_filename = f"best_model_{CONFIG['model']}.pth"
 
     print("\nCONFIG Dictionary:")
     pprint.pprint(CONFIG)
@@ -169,8 +187,8 @@ def main():
         # transforms.RandomResizedCrop(224),  
         transforms.RandomHorizontalFlip(),      
         # transforms.RandomRotation(10),           
-        # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-        # transforms.RandAugment(num_ops=2, magnitude=9)  
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandAugment(num_ops=2, magnitude=9),
         transforms.ToTensor(),        
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  
     ]) 
@@ -219,10 +237,7 @@ def main():
     ############################################################################
 
     # Instantiate the model.
-    model = resnet50(weights=ResNet50_Weights.DEFAULT)   # instantiate your model ### TODO
-
-    # Simple modification to the last layer to match the number of classes
-    model.fc = torch.nn.Linear(model.fc.in_features, 2)
+    model = CNNBasedClassifier(model=resnext50_32x4d(weights=ResNeXt50_32X4D_Weights.DEFAULT), num_classes=2, freeze_backbone=True) # instantiate your model ### TODO
 
     model = model.to(CONFIG["device"])   # move it to target device
 
@@ -294,7 +309,7 @@ def main():
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             total += labels.size(0)
-            correct += predicted.eq(labels.to(CONFIG["device"])).sum().item()
+            correct += preds.eq(labels.to(CONFIG["device"])).sum().item()
 
     # Compute metrics
     accuracy = 100. * correct / total
@@ -313,11 +328,12 @@ def main():
         for images, _ in testloader:
             images = images.to(CONFIG["device"])
             outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            predictions.extend(predicted.cpu().numpy())
+            _, preds = torch.max(outputs, 1)
+            predictions.extend(preds.cpu().numpy())
 
     # --- Create Submission File ---
     submission_df = pd.DataFrame({'id': test_df.iloc[:, 0], 'label': predictions})
+    submission_df['id'] = submission_df['id'].str.replace('./dataset/', '', regex=False)
     submission_df.to_csv("submission.csv", index=False)
     print("submission.csv created successfully.")
 
