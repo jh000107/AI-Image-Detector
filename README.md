@@ -12,6 +12,6 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 
 ## Data Analysis
 
-Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda.ipynb)
+Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda_V2.ipynb)
 
 ## Data Processing
