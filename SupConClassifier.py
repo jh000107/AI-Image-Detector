@@ -79,6 +79,7 @@ def train(epoch, encoder, classifier, trainloader, optimizer, criterion, CONFIG)
 
         with torch.no_grad():
             features = encoder(images)
+            features = torch.flatten(features, 1)
 
         outputs = classifier(features)
         loss = criterion(outputs, labels)
@@ -110,6 +111,8 @@ def validate(epoch, encoder, classifier, valloader, criterion, CONFIG):
             images, labels = images.to(device), labels.to(device)
 
             features = encoder(images)
+            features = torch.flatten(features, 1)
+            
             outputs = classifier(features)
             loss = criterion(outputs, labels)
 
@@ -209,6 +212,7 @@ def main():
         for images, labels in val_loader:  # Use val_loader or test_loader
             images, labels = images.to(CONFIG["device"]), labels.to(CONFIG["device"])
             features = encoder(images)
+            features = torch.flatten(features, 1)
             outputs = classifier(features)
             _, preds = torch.max(outputs, 1)
             all_preds.extend(preds.cpu().numpy())
@@ -233,6 +237,7 @@ def main():
         for images, _ in test_loader:
             images = images.to(CONFIG["device"])
             features = encoder(images)
+            features = torch.flatten(features, 1)
             outputs = classifier(features)
             _, preds = torch.max(outputs, 1)
             predictions.extend(preds.cpu().numpy())
