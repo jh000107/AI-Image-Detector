@@ -1,20 +1,32 @@
+import os
+import pandas as pd
+
 import torch
 from torchvision import transforms
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from util import TwoCropTransform, ContrastiveImageDataset
+
 from networks.resnet50 import SupConResNet
+from networks.efficientnet import SupConEfficientNet
+
 from losses import SupConLoss
 
 
 from tqdm.auto import tqdm  # For progress bars
 import wandb
 
+def modify_image_path(df):
+    # Modify the file_name to have the full path
+    df['file_name'] = df['file_name'].apply(lambda x: os.path.join('./dataset/', x))
+    return df
+
 
 
 def set_loader(CONFIG):
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(size=224, scale=(0.2, 1.)),
+        transforms.RandomResizedCrop(size=CONFIG['image_size'], scale=(0.2, 1.)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomApply([
             transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
@@ -27,7 +39,8 @@ def set_loader(CONFIG):
 
 
     train_dataset = ContrastiveImageDataset(
-        dataset_path=CONFIG['csv_path'],
+        df = modify_image_path(pd.read_csv(CONFIG['train_csv_path'])),
+        is_train=True,
         transform=TwoCropTransform(train_transform)
     )
 
@@ -79,13 +92,13 @@ def main():
         "model": "SupConResNet50",   # Change name when using a different model
         "batch_size": 64, # run batch size finder to find optimal batch size
         "image_size": 224, # Resize images to this size
-        "learning_rate": 3e-4,
+        "learning_rate": 0.01,
         "temperature": 0.07,
         "epochs": 10,  
         "num_workers": 4, # Adjust based on your system
         "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
         "wandb_project": "SupCon-ai-image-detection",
-        "csv_path": "./dataset/train.csv",
+        "train_csv_path": "./dataset/train.csv",
         "seed": 42,
     }
 
@@ -97,7 +110,8 @@ def main():
     model.to(CONFIG['device'])
 
     criterion = SupConLoss(temperature=CONFIG['temperature'])
-    optimizer = torch.optim.SGD(model.parameters(), lr=CONFIG['learning_rate'])
+    optimizer = torch.optim.SGD(model.parameters(), lr=CONFIG['learning_rate'], momentum=0.9, weight_decay=1e-4)
+    scheduler = CosineAnnealingLR(optimizer, T_max=CONFIG['epochs'])
 
 
     # Initialize wandb
@@ -106,22 +120,23 @@ def main():
 
 
     # training routine
-    for epoch in range(1, CONFIG['epochs'] + 1):
+    for epoch in range(CONFIG['epochs']):
 
 
         # train for one epoch
         loss = train(epoch, model, train_loader, optimizer, criterion, CONFIG)
+        scheduler.step()
 
         # log to WandB
         wandb.log({
-            "epoch": epoch,
+            "epoch": epoch+1,
             "train_loss": loss,
             "lr": optimizer.param_groups[0]["lr"] # Log learning rate
         })
 
     # save the last model
-    torch.save(model.state_dict(), "supcon_resnet50_final.pth")
-
+    torch.save(model.state_dict(), "supcon_resnet50_batch_128.pth")
+    wandb.save("supcon_resnet50_batch_128.pth") # Save to wandb as well
 
     wandb.finish()
 

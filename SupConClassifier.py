@@ -26,6 +26,9 @@ def set_loader(CONFIG):
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(size=CONFIG['image_size'], scale=(0.2, 1.)),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),     
+        transforms.RandomRotation(20),           
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
@@ -129,11 +132,10 @@ def main():
 
     CONFIG = {
         "model": "SupConResNet50-linear",   # Change name when using a different model
-        "ckpt_path": "./supcon_resnet50_final.pth", # Path to the pretrained model
+        "ckpt_path": "./supcon_resnet50_pretrained_30epochs.pth", # Path to the pretrained model"
         "batch_size": 64, # run batch size finder to find optimal batch size
         "image_size": 224, # Resize images to this size
-        "learning_rate": 0.003,
-        "temperature": 0.07,
+        "learning_rate": 0.005,
         "epochs": 10,  
         "num_workers": 4, # Adjust based on your system
         "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
@@ -155,7 +157,11 @@ def main():
     classifier = LinearClassifier(num_classes=2).to(CONFIG['device'])
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(classifier.parameters(), lr=CONFIG['learning_rate'])
+    # Weight decay is added to the optimizer for regularization.
+    optimizer = torch.optim.SGD(classifier.parameters(), lr=CONFIG['learning_rate'], momentum=0.9, weight_decay=1e-4)
+
+    # CosineAnnealingLR is used to reduce the learning rate as the training progresses for smoother convergence.
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=CONFIG["epochs"])
 
     print("\nModel summary:")
     print(f"{model}\n")
@@ -166,7 +172,7 @@ def main():
 
     # Initialize wandb
     wandb.init(project=CONFIG['wandb_project'], config=CONFIG)
-    wandb.watch(encoder)  # watch the model gradients
+    wandb.watch(classifier)  # watch the model gradients
 
     ############################################################################
     # --- Training Loop ---
@@ -176,6 +182,7 @@ def main():
     for epoch in range(CONFIG["epochs"]):
         train_loss, train_acc = train(epoch, encoder, classifier, train_loader, optimizer, criterion, CONFIG)
         val_loss, val_acc = validate(epoch, encoder, classifier, val_loader, criterion, CONFIG)
+        scheduler.step()
 
         # log to WandB
         wandb.log({
@@ -190,8 +197,8 @@ def main():
         # Save the best model (based on validation accuracy)
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(classifier.state_dict(), "best_supcon_classifier.pth")
-            wandb.save("best_supcon_classifier.pth") # Save to wandb as well
+            torch.save(classifier.state_dict(), "best_supcon_classifier_3.pth")
+            wandb.save("best_supcon_classifier_3.pth") # Save to wandb as well
 
 
     wandb.finish()
@@ -200,8 +207,9 @@ def main():
     # Evaluation -- shouldn't have to change the following code
     ############################################################################
 
-    classifier.load_state_dict(torch.load("best_supcon_classifier.pth"))
+    classifier.load_state_dict(torch.load("best_supcon_classifier_3.pth"))
     classifier.eval()
+    encoder.eval()
     
     all_preds = []
     all_labels = []
