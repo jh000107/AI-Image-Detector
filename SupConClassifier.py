@@ -6,7 +6,7 @@ import torch.nn as nn
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
-from util import ContrastiveImageDataset
+from utils.util import ContrastiveImageDataset
 from networks.resnet50 import SupConResNet, LinearClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score

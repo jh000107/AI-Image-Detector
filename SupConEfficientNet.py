@@ -6,7 +6,7 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from util import TwoCropTransform, ContrastiveImageDataset
+from utils.util import TwoCropTransform, ContrastiveImageDataset
 
 from networks.efficientnet import SupConEfficientNet
 
