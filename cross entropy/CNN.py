@@ -229,7 +229,7 @@ def main():
     #       Data Loading
     ############################################################################
 
-    base_dir = './dataset/'
+    base_dir = '../dataset/'
 
     train_df = pd.read_csv(os.path.join(base_dir, 'train.csv'))
     test_df = pd.read_csv(os.path.join(base_dir, 'test.csv'))
