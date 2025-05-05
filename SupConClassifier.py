@@ -7,19 +7,37 @@ from torchvision import transforms
 from torch.utils.data import DataLoader
 
 from utils.util import ContrastiveImageDataset
-from networks.resnet50 import SupConResNet, LinearClassifier
+from networks.encoder import SupConResNet, SupConEfficientNet, LinearClassifier
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 from tqdm.auto import tqdm  # For progress bars
 import wandb
 
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train a model with supervised contrastive learning.")
+
+    parser.add_argument(
+        "--model", type=str, choices=["resnet50", "efficientnetb3"], default="efficientnetb3",
+        help="Model architecture to use: 'resnet50' or 'efficientnetb3'"
+    )
+
+    parser.add_argument(
+        "--ckpt_path", type=str, default="./weights/supcon_efficientnetb3.pth",
+        help="Path to the checkpoint file for the encoder"
+    )
+
+    args = parser.parse_args()
+
+    return args
 
 def modify_image_path(df):
     # Modify the file_name to have the full path
     df['file_name'] = df['file_name'].apply(lambda x: os.path.join('./dataset/', x))
     return df
-
 
 
 def set_loader(CONFIG):
@@ -29,6 +47,7 @@ def set_loader(CONFIG):
         transforms.RandomVerticalFlip(),     
         transforms.RandomRotation(20),           
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandAugment(num_ops=2, magnitude=9),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406],
                              [0.229, 0.224, 0.225])
@@ -130,11 +149,12 @@ def validate(epoch, encoder, classifier, valloader, criterion, CONFIG):
 
 def main():
 
+    args = parse_args()
+
     CONFIG = {
-        "model": "SupConResNet50-linear",   # Change name when using a different model
-        "ckpt_path": "./supcon_resnet50_pretrained_30epochs.pth", # Path to the pretrained model"
+        "model": f"SupCon{args.model}-linear",   # Change name when using a different model
         "batch_size": 64, # run batch size finder to find optimal batch size
-        "image_size": 224, # Resize images to this size
+        "image_size": 224 if args.model == "resnet50" else 300, # Resize images to this size
         "learning_rate": 0.005,
         "epochs": 10,  
         "num_workers": 4, # Adjust based on your system
@@ -149,12 +169,17 @@ def main():
     train_loader, val_loader, test_loader, test_df = set_loader(CONFIG)
 
     # define model, criterion, and optimizer
-    model = SupConResNet(pretrained=True, head='mlp', feat_dim=128)
-    ckpt = torch.load(CONFIG['ckpt_path'], map_location=CONFIG['device'])
+    if args.model == "resnet50":
+        model = SupConResNet(pretrained=False, head='mlp', feat_dim=128)
+    elif args.model == "efficientnetb3":
+        model = SupConEfficientNet(pretrained=False, head='mlp', feat_dim=128)
+
+    ckpt = torch.load(args.ckpt_path, map_location=CONFIG['device'])
     model.load_state_dict(ckpt)
+
     encoder = model.encoder.to(CONFIG['device'])
 
-    classifier = LinearClassifier(num_classes=2).to(CONFIG['device'])
+    classifier = LinearClassifier(model=args.model, num_classes=2).to(CONFIG['device'])
 
     criterion = nn.CrossEntropyLoss()
     # Weight decay is added to the optimizer for regularization.
@@ -197,8 +222,8 @@ def main():
         # Save the best model (based on validation accuracy)
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(classifier.state_dict(), "best_supcon_classifier_3.pth")
-            wandb.save("best_supcon_classifier_3.pth") # Save to wandb as well
+            torch.save(classifier.state_dict(), "best_supcon_classifier.pth")
+            wandb.save("best_supcon_classifier.pth") # Save to wandb as well
 
 
     wandb.finish()
@@ -207,7 +232,7 @@ def main():
     # Evaluation -- shouldn't have to change the following code
     ############################################################################
 
-    classifier.load_state_dict(torch.load("best_supcon_classifier_3.pth"))
+    classifier.load_state_dict(torch.load("best_supcon_classifier.pth"))
     classifier.eval()
     encoder.eval()
     

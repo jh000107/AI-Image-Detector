@@ -7,14 +7,14 @@ AI-Image-Detector/
 ├── eda/                       # Exploratory Data Analysis notebooks
 ├── images/                    # Figures
 ├── networks/                  # ResNet50, EfficientNetB3 networks
+├── resources/                 # addtional resources
 ├── utils/                     # Utility classes
 ├── weights/                   # Pre-trained EfficientNetB3 encoder weight
 ├── .gitignore                 # Git ignore file
 ├── README.md                  # Project documentation
-├── SupCon.py                  # SupCon with ResNet50 backbone
+├── SupCon.py                  # SupCon backbone training script
 ├── SupConClassifier.py        # Classifier using SupCon features
-├── SupConEfficientNet.py      # SupCon with EfficientNet backbone
-├── SupConEfficientNetClassifier.py # Classifier using SupCon with EfficientNet
+├── SupConEfficientNetClassifier.py # Classifier using SupCon with 
 ├── losses.py                  # SupCon loss function definition
 └── requirements.txt           # Python dependencies
 ```

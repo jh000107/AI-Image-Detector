@@ -9,8 +9,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from utils.util import TwoCropTransform, ContrastiveImageDataset
 
-from networks.resnet50 import SupConResNet
-from networks.efficientnet import SupConEfficientNet
+from networks.encoder import SupConResNet, SupConEfficientNet
 
 from losses import SupConLoss
 
@@ -26,6 +25,7 @@ def parse_args():
         "--model", type=str, choices=["resnet50", "efficientnetb3"], default="efficientnetb3",
         help="Model architecture to use: 'resnet50' or 'efficientnetb3'"
     )
+
 
     parser.add_argument(
         "--pretrained", action="store_true",
@@ -158,7 +158,7 @@ def main():
 
         if loss < best_loss:
             best_loss = loss
-            checkpoint_path = f"best_supcon_encoder_epoch{epoch+1}.pth"
+            checkpoint_path = f"best_supcon_encoder.pth"
             torch.save(model.state_dict(), checkpoint_path)
             wandb.save(checkpoint_path)
             print(f"✅ Saved new best model at epoch {epoch+1} with loss {loss:.4f}")
