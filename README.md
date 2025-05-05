@@ -1,5 +1,29 @@
 # AI-Image-Detector
 
+## Repository Sturcture
+```
+AI-Image-Detector/ \
+├── documents/                 # Project paper
+├── eda/                       # Exploratory Data Analysis notebooks
+├── images/                    # Figures
+├── networks/                  # ResNet50, EfficientNetB3 networks
+├── utils/                     # Utility classes
+├── weights/                   # Pre-trained EfficientNetB3 encoder weight
+├── .gitignore                 # Git ignore file
+├── README.md                  # Project documentation
+├── SupCon.py                  # SupCon with ResNet50 backbone
+├── SupConClassifier.py        # Classifier using SupCon features
+├── SupConEfficientNet.py      # SupCon with EfficientNet backbone
+├── SupConEfficientNetClassifier.py # Classifier using SupCon with EfficientNet
+├── losses.py                  # SupCon loss function definition
+└── requirements.txt           # Python dependencies
+```
+
+
+## Objective
+
+AI has reached a point where it can generate highly realistic faces, scenes, and objects. This study addresses the problem of distinguishing AI-generated visuals from authentic photographs using a unique dataset, "AI vs. Human-Generated Images," from a Kaggle competition. Unlike conventional datasets, this dataset provides paired images where each real image has a corresponding AI-generated counterpart, allowing for direct comparative analysis. We leverage this structured pairing within a deep learning framework, incorporating convolutional neural networks (CNNs) and transformer-based architectures to develop robust classifiers. In addition, we explore contrastive learning to enhance feature discrimination, hypothesizing that it improves generalization by enforcing a more distinct separation between real and AI-generated images.
+
 ## Data Source
 
 The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasala79/ai-vs-human-generated-dataset?select=test_data_v2) dataset is published on Kaggle.
@@ -11,6 +35,6 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 
 ## Data Analysis
 
-Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda_V2.ipynb)
+Exploratory Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda_V2.ipynb)
 
 ## Data Processing
