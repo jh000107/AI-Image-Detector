@@ -31,9 +31,77 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 
 ![Sample Dataset](images/dataset.png)
 
+## Model Architecture
 
-## Data Analysis
+![Model Architecture](images/model_architecture.png)
 
-Exploratory Data Analysis (EDA) can be found [here](https://github.com/jh000107/AI-Image-Detector/blob/master/eda_V2.ipynb)
+## Running
 
-## Data Processing
+### Prerequisites
+
+1. Clone the repository.
+2. Create a directory called `dataset`.
+3. Download the dataset from the kaggle competition and locate it in `dataset`.
+4. Run `pip install -r requirements.txt` to download all dependencies.
+5. Setup [Weights & Biases](https://wandb.ai/site/) to track training progress.
+
+### Train Encoder
+
+To train the encoder using supervised contrastive learning, run the training script with your desired model architecture:
+
+```bash
+# Train with EfficientNet-B3
+python SupCon.py --model efficientnetb3 --pretrained
+
+# Train with Resnet50
+python SupCon.py --model efficientnetb3 --pretrained
+```
+
+You can also omit `--pretrained` if you prefer training from scratch.
+
+Optional arguments:
+- `--model`: Choose between `efficientnetb3` and `resnet50`.
+- `--pretrained`: Flag to load pretrained ImageNet weights.
+
+Training progress and loss values are logged via Weights & Biases, if configured.
+
+#### Output
+
+At the end of training:
+- The best encoder model (based on training loss) will be saved as `best_supcon_encoder.pth`
+
+**Note**: You can skip the training process by using the pretrained encoder weights for EfficientNet-B3 that are already included in this repository under the `weights/` directory.
+
+### Train Classifier
+
+After training or downloading the encoder, you can train a linear classifier on top of the frozen encoder representations.
+
+```bash
+# Train classifier using EfficientNetB3 encoder
+python SupConClassifier.py --model efficientnetb3 --ckpt_path weights/best_supcon_encoder.pth
+
+# Train classifier using ResNet50 encoder (you must train the encoder yourself)
+python TrainClassifier.py --model resnet50 --ckpt_path weights/best_supcon_encoder.pth
+```
+#### Uisng trained Encoder
+
+- If you've already trained an encoder (or are using the provided `EfficientNetB3` checkpoint), specify the path using `--ckpt_path`.
+- The encoder will be frozen, and only the linear classifier will be trained.
+- The best classifier (based on validation accuracy) will be saved as `best_supcon_classifier.pth`
+
+### Evaluation & Submission
+
+After training, the script automatically:
+- Evaluates the classifier on the validation set.
+- Logs metrics including accuracy, precision, recall, and F1 score.
+- Generates a `submission.csv` file in the required format:
+
+```bash
+id,label
+test1.png,1
+test2.png,0
+```
+
+This file is ready for submission to the [Kaggle competition](https://www.kaggle.com/competitions/detect-ai-vs-human-generated-images/submissions).
+
+

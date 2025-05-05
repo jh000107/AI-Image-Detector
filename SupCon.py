@@ -158,7 +158,7 @@ def main():
 
         if loss < best_loss:
             best_loss = loss
-            checkpoint_path = f"best_supcon_encoder.pth"
+            checkpoint_path = f"./weights/best_supcon_encoder.pth"
             torch.save(model.state_dict(), checkpoint_path)
             wandb.save(checkpoint_path)
             print(f"✅ Saved new best model at epoch {epoch+1} with loss {loss:.4f}")
