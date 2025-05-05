@@ -2,7 +2,7 @@
 
 ## Repository Sturcture
 ```
-AI-Image-Detector/ \
+AI-Image-Detector/
 ├── documents/                 # Project paper
 ├── eda/                       # Exploratory Data Analysis notebooks
 ├── images/                    # Figures

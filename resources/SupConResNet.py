@@ -2,7 +2,6 @@ import os
 import pandas as pd
 
 import torch
-
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -14,33 +13,16 @@ from networks.efficientnet import SupConEfficientNet
 
 from losses import SupConLoss
 
+
 from tqdm.auto import tqdm  # For progress bars
 import wandb
-
-import argparse
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train a model with supervised contrastive learning.")
-
-    parser.add_argument(
-        "--model", type=str, choices=["resnet50", "efficientnetb3"], default="efficientnetb3",
-        help="Model architecture to use: 'resnet50' or 'efficientnetb3'"
-    )
-
-    parser.add_argument(
-        "--pretrained", action="store_true",
-        help="Use pretrained weights for the backbone model"
-    )
-
-    args = parser.parse_args()
-
-    return args
-
 
 def modify_image_path(df):
     # Modify the file_name to have the full path
     df['file_name'] = df['file_name'].apply(lambda x: os.path.join('./dataset/', x))
     return df
+
+
 
 def set_loader(CONFIG):
     train_transform = transforms.Compose([
@@ -65,6 +47,7 @@ def set_loader(CONFIG):
     train_loader = DataLoader(train_dataset, batch_size=CONFIG['batch_size'], shuffle=True, num_workers=CONFIG['num_workers'], pin_memory=True)
 
     return train_loader
+
 
 def train(epoch, model, trainloader, optimizer, criterion, CONFIG):
     """Train one epoch for supervised contrastive learning (SupCon)."""
@@ -102,20 +85,19 @@ def train(epoch, model, trainloader, optimizer, criterion, CONFIG):
     
     return train_loss
 
+
 def main():
 
-    args = parse_args()
-
     CONFIG = {
-        "model": f"SupCon{args.model}",   # Change name when using a different model
-        "batch_size": 64 if args.model == "resnet50" else 16, # run batch size finder to find optimal batch size
-        "image_size": 224 if args.model == "resnet50" else 300, # Resize images to this size
+        "model": "SupConResNet50",   # Change name when using a different model
+        "batch_size": 64, # run batch size finder to find optimal batch size
+        "image_size": 224, # Resize images to this size
         "learning_rate": 0.01,
         "temperature": 0.07,
         "epochs": 10,  
         "num_workers": 4, # Adjust based on your system
         "device": "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu",
-        "wandb_project": f"SupCon-ai-image-detection-{args.model}",
+        "wandb_project": "SupCon-ai-image-detection",
         "train_csv_path": "./dataset/train.csv",
         "seed": 42,
     }
@@ -124,12 +106,7 @@ def main():
     train_loader = set_loader(CONFIG)
 
     # define model, criterion, and optimizer
-
-    if args.model == "resnet50":
-        model = SupConResNet(pretrained=args.pretrained, head='mlp', feat_dim=128)
-    elif args.model == "efficientnetb3":
-        model = SupConEfficientNet(pretrained=args.pretrained, head='mlp', feat_dim=128)
-
+    model = SupConResNet(pretrained=True, head='mlp', feat_dim=128)
     model.to(CONFIG['device'])
 
     criterion = SupConLoss(temperature=CONFIG['temperature'])
@@ -141,7 +118,6 @@ def main():
     wandb.init(project=CONFIG['wandb_project'], config=CONFIG)
     wandb.watch(model)  # watch the model gradients
 
-    best_loss = float('inf')
 
     # training routine
     for epoch in range(CONFIG['epochs']):
@@ -156,12 +132,9 @@ def main():
             "lr": optimizer.param_groups[0]["lr"] # Log learning rate
         })
 
-        if loss < best_loss:
-            best_loss = loss
-            checkpoint_path = f"best_supcon_encoder_epoch{epoch+1}.pth"
-            torch.save(model.state_dict(), checkpoint_path)
-            wandb.save(checkpoint_path)
-            print(f"✅ Saved new best model at epoch {epoch+1} with loss {loss:.4f}")
+    # save the last model
+    torch.save(model.state_dict(), "supcon_resnet50_batch_128.pth")
+    wandb.save("supcon_resnet50_batch_128.pth") # Save to wandb as well
 
     wandb.finish()
 
