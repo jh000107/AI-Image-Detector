@@ -1,13 +1,13 @@
 # AI-Image-Detector
 
-## Repository Sturcture
+## Repository Structure
 ```
 AI-Image-Detector/
 ├── documents/                 # Project paper
 ├── eda/                       # Exploratory Data Analysis notebooks
 ├── images/                    # Figures
 ├── networks/                  # ResNet50, EfficientNetB3 networks
-├── resources/                 # addtional resources
+├── resources/                 # additional resources
 ├── utils/                     # Utility classes
 ├── weights/                   # Pre-trained EfficientNetB3 encoder weight
 ├── .gitignore                 # Git ignore file
@@ -35,6 +35,40 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 
 ![Model Architecture](images/model_architecture.png)
 
+This project follows a two-stage training pipeline based on Supervised Contrastive Learning (SupCon):
+
+1. **Encoder Pretraining (SupCon)**
+
+During this phase:
+- Each input image is augmented twice to create two different views.
+- Both views are passed through a shared encoder (e.g., ResNet50 or EfficientNetB3).
+- A Supervised Contrastive Loss encourages representations of the same class to be closer and different classes to be farther apart.
+- Only the encoder and projection head are updated.
+
+2. **Classifier Training**
+- The pretrained encoder is frozen.
+- A lightweight linear classifier is trained on top of the encoder features.
+- Cross-entropy loss is used to train the classifier.
+- Only the classifier weights are updated.
+
+## Results
+
+### Traditional Supervised Learning (CrossEntropy)
+| Model          | Public Leaderboard Score (F-1) |
+|----------------|--------------------------------|
+| EfficientNetB3 | 0.687                          |
+| ResNeXt50      | 0.569                          |
+| ViT-B/16       | 0.327                          |
+| ViT-B/32       | 0.471                          |
+
+### Supervised Contrastive Learning (SupCon)
+| Model          | Public Leaderboard Score (F-1) |
+|----------------|--------------------------------|
+| EfficientNetB3 | 0.788                          |
+| ResNet50       | 0.666                          |
+
+![Results](images/results.png)
+
 ## Running
 
 ### Prerequisites
@@ -45,6 +79,12 @@ The [AI vs. Human-Generated Images](https://www.kaggle.com/datasets/alessandrasa
 4. Run `pip install -r requirements.txt` to download all dependencies.
 5. Setup [Weights & Biases](https://wandb.ai/site/) to track training progress.
 
+```bash
+git clone https://github.com/jh000107/AI-Image-Detector.git
+cd AI-Image-Detector
+pip install -r requirements.txt
+```
+
 ### Train Encoder
 
 To train the encoder using supervised contrastive learning, run the training script with your desired model architecture:
@@ -54,7 +94,7 @@ To train the encoder using supervised contrastive learning, run the training scr
 python SupCon.py --model efficientnetb3 --pretrained
 
 # Train with Resnet50
-python SupCon.py --model efficientnetb3 --pretrained
+python SupCon.py --model resnet50 --pretrained
 ```
 
 You can also omit `--pretrained` if you prefer training from scratch.
@@ -83,7 +123,7 @@ python SupConClassifier.py --model efficientnetb3 --ckpt_path weights/best_supco
 # Train classifier using ResNet50 encoder (you must train the encoder yourself)
 python TrainClassifier.py --model resnet50 --ckpt_path weights/best_supcon_encoder.pth
 ```
-#### Uisng trained Encoder
+#### Using trained Encoder
 
 - If you've already trained an encoder (or are using the provided `EfficientNetB3` checkpoint), specify the path using `--ckpt_path`.
 - The encoder will be frozen, and only the linear classifier will be trained.
@@ -104,4 +144,13 @@ test2.png,0
 
 This file is ready for submission to the [Kaggle competition](https://www.kaggle.com/competitions/detect-ai-vs-human-generated-images/submissions).
 
-
+## Acknowledgements
+```bash
+@Article{khosla2020supervised,
+    title   = {Supervised Contrastive Learning},
+    author  = {Prannay Khosla and Piotr Teterwak and Chen Wang and Aaron Sarna and Yonglong Tian and Phillip Isola and Aaron Maschinot and Ce Liu and Dilip Krishnan},
+    journal = {arXiv preprint arXiv:2004.11362},
+    year    = {2020},
+    Repo    = {https://github.com/HobbitLong/SupContrast}
+}
+```
