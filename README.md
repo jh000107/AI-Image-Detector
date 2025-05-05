@@ -13,8 +13,7 @@ AI-Image-Detector/
 ├── .gitignore                 # Git ignore file
 ├── README.md                  # Project documentation
 ├── SupCon.py                  # SupCon backbone training script
-├── SupConClassifier.py        # Classifier using SupCon features
-├── SupConEfficientNetClassifier.py # Classifier using SupCon with 
+├── SupConClassifier.py        # Linear Classifier training script using SupCon features
 ├── losses.py                  # SupCon loss function definition
 └── requirements.txt           # Python dependencies
 ```
