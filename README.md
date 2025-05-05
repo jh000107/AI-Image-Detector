@@ -121,7 +121,7 @@ After training or downloading the encoder, you can train a linear classifier on 
 python SupConClassifier.py --model efficientnetb3 --ckpt_path weights/best_supcon_encoder.pth
 
 # Train classifier using ResNet50 encoder (you must train the encoder yourself)
-python TrainClassifier.py --model resnet50 --ckpt_path weights/best_supcon_encoder.pth
+python SupConClassifier.py --model resnet50 --ckpt_path weights/best_supcon_encoder.pth
 ```
 #### Using trained Encoder
 
